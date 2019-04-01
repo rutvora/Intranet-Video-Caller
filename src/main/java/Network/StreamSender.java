@@ -1,23 +1,33 @@
+package Network;
+
 import java.io.IOException;
 import java.net.*;
 
-class StreamServer {
-    void start() {
-        StreamServerHelper helper = new StreamServerHelper();
+public class StreamSender {
+    public void start() {
+        String IPAddr = null; //TODO
+        StreamSenderHelper helper = new StreamSenderHelper(IPAddr);
         Thread streamServer = new Thread(helper);
         streamServer.start();
     }
 
-    private class StreamServerHelper implements Runnable {
+    private class StreamSenderHelper implements Runnable {
         DatagramSocket UDPSocket;
         InetAddress ip;
+
+        StreamSenderHelper(String IPAddr) {
+            try {
+                ip = InetAddress.getByName(IPAddr);
+            } catch (UnknownHostException e) {
+                e.printStackTrace();
+            }
+        }
 
         @Override
         public void run() {
             try {
                 UDPSocket = new DatagramSocket();
-                ip = InetAddress.getLocalHost();
-            } catch (SocketException | UnknownHostException e) {
+            } catch (SocketException e) {
                 e.printStackTrace();
             }
             byte[] buff = "12345678".getBytes();

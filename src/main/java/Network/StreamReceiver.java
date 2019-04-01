@@ -1,16 +1,18 @@
+package Network;
+
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketException;
 
-class StreamClient {
-    void start() {
-        StreamClientHelper helper = new StreamClientHelper();
+public class StreamReceiver {
+    public void start() {
+        StreamReceiverHelper helper = new StreamReceiverHelper();
         Thread streamClient = new Thread(helper);
         streamClient.start();
     }
 
-    private class StreamClientHelper implements Runnable {
+    private class StreamReceiverHelper implements Runnable {
 
         DatagramPacket datagramPacket = null;
         private DatagramSocket UDPSocket;
