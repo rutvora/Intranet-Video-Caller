@@ -37,17 +37,22 @@ func ackHandler(addr *net.UDPAddr, receive bool) {
 	//TODO: Do something based on ACK count
 }
 
+//Serves video to the spcified client. Runs one async thread per client
 func serveVideo(conn *net.UDPConn, addr *net.UDPAddr, stream <-chan byte, quit chan bool) {
 	buf := make([]byte, 4096)
 
 	for {
 		select {
+		//If client disconnects, exit this function
 		case <-quit:
 			delete(clientWriteChannels, addr.String())
 			delete(clientQuitChannels, addr.String())
 			delete(ackPendingCount, addr.String())
 			break
+		//Read from incoming channel
 		case buf[0] = <-stream:
+			//Read till buffsize and then send
+			//Can experiment with buffSize to improve latency in highspeed connections
 			for i := 1; i < 4096; i++ {
 				buf[i] = <-stream
 			}
@@ -56,11 +61,12 @@ func serveVideo(conn *net.UDPConn, addr *net.UDPAddr, stream <-chan byte, quit c
 				log.Println(addr.String(), err)
 				quit <- true
 			}
-			ackHandler(addr, false)
+			ackHandler(addr, false) //Add 1 to pending count
 		}
 	}
 }
 
+//Adds new Client to all the maps and initiates the async function to send the video stream
 func addNewClient(addr *net.UDPAddr, conn *net.UDPConn) {
 	writeChannel := make(chan byte)
 	quitChannel := make(chan bool, 1)
@@ -70,12 +76,13 @@ func addNewClient(addr *net.UDPAddr, conn *net.UDPConn) {
 	go serveVideo(conn, addr, writeChannel, quitChannel)
 }
 
+//Begins the function of the server
 func RunServer() {
 	serverAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:8000")
 	if err != nil {
 		log.Fatalln(err)
 	}
-	conn, err := net.ListenUDP("udp", serverAddr)
+	conn, err := net.ListenUDP("udp", serverAddr) //Binds server to listen on specified address
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -99,6 +106,7 @@ func RunServer() {
 			log.Fatalln(err)
 		}
 
+		//Check if addr already exists
 		_, ok := clientWriteChannels[addr.String()]
 		switch {
 		case ok && string(buf[0:n]) == "QUIT":
