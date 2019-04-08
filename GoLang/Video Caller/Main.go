@@ -11,5 +11,10 @@ func main() {
 	time.Sleep(time.Second * 2)
 	go client.RunClient("127.0.0.1")
 
-	select {}
+	ch := make(chan bool, 1)
+	//Waits infinitely (else will exit the program)
+	select {
+	case <-ch:
+		return
+	}
 }

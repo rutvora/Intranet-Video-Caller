@@ -34,13 +34,34 @@ func ackHandler(addr *net.UDPAddr, receive bool) {
 	} else {
 		ackPendingCount[addr.String()]++
 	}
-	//TODO: Do something based on ACK count
+	//fmt.Println(ackPendingCount[addr.String()])	//Noob debugging
+
+	//Change quality based on pending ACKs
+	switch count := ackPendingCount[addr.String()]; {
+	case count < 10:
+		video.ModifyffmpegPreset("ultrafast")
+	case count < 20:
+		video.ModifyffmpegPreset("superfast")
+	case count < 30:
+		video.ModifyffmpegPreset("veryfast")
+	case count < 40:
+		video.ModifyffmpegPreset("faster")
+	case count < 50:
+		video.ModifyffmpegPreset("fast")
+	case count < 60:
+		video.ModifyffmpegPreset("medium")
+	case count < 70:
+		video.ModifyffmpegPreset("slow")
+	default:
+		video.ModifyffmpegPreset("veryslow")
+	}
 }
 
 //Serves video to the spcified client. Runs one async thread per client
 func serveVideo(conn *net.UDPConn, addr *net.UDPAddr, stream <-chan byte, quit chan bool) {
 	buf := make([]byte, 4096)
 
+WRITE:
 	for {
 		select {
 		//If client disconnects, exit this function
@@ -48,7 +69,7 @@ func serveVideo(conn *net.UDPConn, addr *net.UDPAddr, stream <-chan byte, quit c
 			delete(clientWriteChannels, addr.String())
 			delete(clientQuitChannels, addr.String())
 			delete(ackPendingCount, addr.String())
-			break
+			break WRITE
 		//Read from incoming channel
 		case buf[0] = <-stream:
 			//Read till buffsize and then send
@@ -67,12 +88,17 @@ func serveVideo(conn *net.UDPConn, addr *net.UDPAddr, stream <-chan byte, quit c
 }
 
 //Adds new Client to all the maps and initiates the async function to send the video stream
+//TODO: Start streaming to new clients from next container head instead of a random byte
 func addNewClient(addr *net.UDPAddr, conn *net.UDPConn) {
 	writeChannel := make(chan byte)
 	quitChannel := make(chan bool, 1)
 	clientWriteChannels[addr.String()] = writeChannel
 	clientQuitChannels[addr.String()] = quitChannel
 	ackPendingCount[addr.String()] = 0
+	if len(clientWriteChannels) == 1 {
+		webcamStream := video.StartVideoFeed()
+		go copyToAllChannels(webcamStream)
+	}
 	go serveVideo(conn, addr, writeChannel, quitChannel)
 }
 
@@ -80,22 +106,22 @@ func addNewClient(addr *net.UDPAddr, conn *net.UDPConn) {
 func RunServer() {
 	serverAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:8000")
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalln("Resolving hosting address: ", err)
 	}
 	conn, err := net.ListenUDP("udp", serverAddr) //Binds server to listen on specified address
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalln("Binding to port for listening: ", err)
 	}
 	//Defer closing the connection socket
 	defer func() {
 		err := conn.Close()
 		if err != nil {
-			log.Fatalln(err)
+			log.Fatalln("Closing connection: ", err)
 		}
 	}()
 	//Call ffmpeg
-	webcamStream := video.StartVideoFeed()
-	go copyToAllChannels(webcamStream)
+	//webcamStream := video.StartVideoFeed()
+	//go copyToAllChannels(webcamStream)
 	//TODO: Handle quit (signal and auto)
 
 	//Handle incoming stream
@@ -103,7 +129,7 @@ func RunServer() {
 	for {
 		n, addr, err := conn.ReadFromUDP(buf)
 		if err != nil {
-			log.Fatalln(err)
+			log.Fatalln("Reading from connection: ", err)
 		}
 
 		//Check if addr already exists
