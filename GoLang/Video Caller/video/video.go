@@ -4,6 +4,7 @@ package video
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 )
@@ -14,6 +15,13 @@ var (
 	currentPreset string
 )
 
+//Writes given byte array to webcamStream
+func writeToStream(buf []byte, readCount int) {
+	for i := 0; i < readCount; i++ {
+		webcamStream <- buf[i]
+	}
+}
+
 //Run ffmpeg to capture video stream
 func runffmpeg(preset string) {
 	fmt.Println("Setting preset ", preset)
@@ -23,13 +31,18 @@ func runffmpeg(preset string) {
 	filename := "Server_" + preset + ".mp4"
 	_ = os.Remove(filename) //Removes previous instance of the video, if it exists
 	outputFile, _ := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	//if preset == "ultrafast" {
+	//	_, _ = outputFile.Write([]byte{0, 0, 0, 36, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 2, 0, 105, 115, 111, 109, 105, 115,
+	//		111, 50, 97, 118, 99, 49, 105, 115, 111, 54, 109, 112, 52, 49})
+	//}
 	//End test code
 
 	//Calls ffmpeg and binds stdin, stdout, and stderr
 	//see https://trac.ffmpeg.org/wiki/Capture/Webcam and https://lookonmyworks.co.uk/2017/08/15/streaming-video-from-ffmpeg/
 	//to understand the reason behind the command args
 	cmd := exec.Command("ffmpeg", "-nostdin", "-f", "v4l2", "-i", "/dev/video0",
-		"-movflags", "frag_keyframe+empty_moov", "-f", "mp4", "-blocksize", "4096", "-preset", preset, "pipe:1")
+		"-movflags", "frag_keyframe+empty_moov",
+		"-f", "mp4", "-crf", preset, "-frag_size", "4096", "-blocksize", "4096", "pipe:1")
 	stdin, _ := cmd.StdinPipe()
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
@@ -43,21 +56,20 @@ func runffmpeg(preset string) {
 	//for reason check https://stackoverflow.com/questions/2471656/why-does-ffmpeg-stop-randomly-in-the-middle-of-a-process
 	quit := make(chan bool, 1) //Channel to quit this goroutine
 	go func() {
+		id := rand.Int()
+		fmt.Println(currentPreset, id)
 		buff := make([]byte, 4096)
-	READ:
+	READERR:
 		for {
 			select {
 			case <-quit:
-				break READ
+				break READERR
 			default:
 				_, err := stderr.Read(buff)
 				if err != nil {
-					log.Println("Reading stderr from ffmpeg: ", err)
+					log.Println("Reading stderr from ffmpeg: ",id,  err)
 				}
 			}
-			//if readCount > 0 {
-			//	fmt.Println(string(buf[0:readCount]))
-			//}
 		}
 	}()
 
@@ -69,8 +81,13 @@ READ:
 		select {
 		case preset := <-changePreset:
 			//Instruct ffmpeg to quit
-			_ = cmd.Process.Signal(os.Kill)
+			_ = cmd.Process.Signal(os.Interrupt)
 			//Manually close pipes as we haven't called the wait command
+			n, err := stdout.Read(buf)
+			if err != nil {
+				writeToStream(buf, n)
+				_, _ = outputFile.Write(buf[0:n])
+			}
 			_ = stdin.Close()
 			_ = stdout.Close()
 			_ = stderr.Close()
@@ -85,18 +102,25 @@ READ:
 			break READ
 
 		default:
-			//_, _ = stdin.Write([]byte("\n"))	//Noob debugging
 			readCount, err := stdout.Read(buf)
+			//Test code
+			_, err = outputFile.Write(buf[0:readCount])
+			if err != nil {
+				fmt.Println("Writing Server file: ", err)
+			}
+			//36 bytes is moov size
+			//if readCount == 36 {
+			//	fmt.Println("moov ignored")
+			//	continue
+			//}
+			fmt.Println(readCount)
+
+			//End test code
+
 			if err != nil {
 				log.Println("Reading output of ffmpeg: ", err)
 			}
-			//Test code
-			_, _ = outputFile.Write(buf[0:readCount])
-			//End test code
-			for i := 0; i < readCount; i++ {
-				webcamStream <- buf[i]
-				//fmt.Print(buf[i])	//Noob debugging
-			}
+			writeToStream(buf, readCount)
 			//fmt.Println("Read ", readCount, " bytes")	//Noob debugging
 
 		}
@@ -116,7 +140,7 @@ func StartVideoFeed() chan byte {
 		return webcamStream
 	}
 	webcamStream = make(chan byte)
-	go runffmpeg("ultrafast")
+	go runffmpeg("23")
 	return webcamStream
 }
 

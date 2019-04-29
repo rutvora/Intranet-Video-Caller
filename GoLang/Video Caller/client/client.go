@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"time"
 )
 
 //Requests the server specified to start transmitting the video.
@@ -28,7 +29,7 @@ func requestTransmissionStart(server string) *net.UDPConn {
 
 //Sends ack for each received packet
 func sendAck(serverConn *net.UDPConn) {
-	//time.Sleep(time.Second * 1)	//Sleep simulates delay in the network
+	//time.Sleep(time.Second * 2)	//Sleep simulates delay in the network
 	_, _ = serverConn.Write([]byte("ACK"))
 }
 
@@ -41,13 +42,16 @@ func RunClient(server string) {
 	serverConn := requestTransmissionStart(server)
 	buf := make([]byte, 4096)
 	//Write to file (as I am too lazy to code a GUI)
-	_ = os.Remove("test.mp4") //Remove previous instance of file if exists
+	_ = os.Remove("Client.mp4") //Remove previous instance of file if exists
 	outputFile, err := os.OpenFile("Client.mp4", os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModeAppend)
 	if err != nil {
 		log.Fatalln("Opening output file: ", err)
 	}
 	defer outputFile.Close()
-
+	go func() {
+		time.Sleep(time.Second * 10)
+		_, _ = serverConn.Write([]byte("SUPERFAST"))
+	}()
 	//Infinitely keep receiving from the server (the video feed)
 	for {
 		readCount, addr, err := serverConn.ReadFromUDP(buf)
@@ -68,7 +72,7 @@ func RunClient(server string) {
 		if count {
 			go sendAck(serverConn)
 		}
-		count = !count
+		//count = !count
 		//End test code
 
 	}
